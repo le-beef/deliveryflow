@@ -71,3 +71,50 @@ export async function submitOrder<T extends object>(order: T) {
 export async function setOrderStatus(firebaseKey: string, status: string) {
   await update(ref(database, `orders/${firebaseKey}`), { status, updatedAt: Date.now() });
 }
+
+export type CashRegister = {
+  sessionId: string;
+  status: "open" | "closed";
+  openingAmount: number;
+  openedAt: number;
+  openedBy: string;
+  openedByName: string;
+  closedAt?: number;
+  closedBy?: string;
+  closingAmount?: number;
+};
+
+export function watchCashRegister(callback: (cashRegister: CashRegister | null) => void) {
+  return onValue(ref(database, "cash/current"), (snapshot) => {
+    callback(snapshot.exists() ? snapshot.val() as CashRegister : null);
+  });
+}
+
+export async function openCashRegister(openingAmount: number, user: User) {
+  const sessionRef = push(ref(database, "cash/sessions"));
+  if (!sessionRef.key) throw new Error("Nao foi possivel criar a sessao do caixa.");
+  const cashRegister: CashRegister = {
+    sessionId: sessionRef.key,
+    status: "open",
+    openingAmount,
+    openedAt: Date.now(),
+    openedBy: user.uid,
+    openedByName: user.displayName || user.email || "Administrador",
+  };
+  await set(sessionRef, cashRegister);
+  await set(ref(database, "cash/current"), cashRegister);
+  return cashRegister;
+}
+
+export async function closeCashRegister(cashRegister: CashRegister, closingAmount: number, user: User) {
+  const closed: CashRegister = {
+    ...cashRegister,
+    status: "closed",
+    closingAmount,
+    closedAt: Date.now(),
+    closedBy: user.uid,
+  };
+  await update(ref(database, `cash/sessions/${cashRegister.sessionId}`), closed);
+  await set(ref(database, "cash/current"), closed);
+  return closed;
+}

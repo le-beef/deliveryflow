@@ -1,0 +1,30 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "products": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email == 'albano.tiago.esteves@gmail.com'"
+    },
+    "orders": {
+      ".indexOn": ["createdAt", "status"],
+      "$orderId": {
+        ".read": "auth != null && (auth.token.email == 'albano.tiago.esteves@gmail.com' || data.child('createdBy').val() == auth.uid)",
+        ".write": "auth != null && ((!data.exists() && newData.child('createdBy').val() == auth.uid) || auth.token.email == 'albano.tiago.esteves@gmail.com')",
+        ".validate": "newData.hasChildren(['id', 'origin', 'reference', 'customer', 'items', 'total', 'status', 'createdBy', 'createdAt'])"
+      }
+    },
+    "cash": {
+      ".read": "auth != null && auth.token.email == 'albano.tiago.esteves@gmail.com'",
+      ".write": "auth != null && auth.token.email == 'albano.tiago.esteves@gmail.com'",
+      "current": {
+        ".validate": "newData.hasChildren(['sessionId', 'status', 'openingAmount', 'openedAt', 'openedBy', 'openedByName']) && (newData.child('status').val() == 'open' || newData.child('status').val() == 'closed') && newData.child('openingAmount').isNumber() && newData.child('openingAmount').val() >= 0"
+      },
+      "sessions": {
+        "$sessionId": {
+          ".validate": "newData.hasChildren(['sessionId', 'status', 'openingAmount', 'openedAt', 'openedBy', 'openedByName']) && newData.child('sessionId').val() == $sessionId && (newData.child('status').val() == 'open' || newData.child('status').val() == 'closed') && newData.child('openingAmount').isNumber() && newData.child('openingAmount').val() >= 0"
+        }
+      }
+    }
+  }
+}

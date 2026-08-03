@@ -3,7 +3,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
-import { ADMIN_EMAIL, loginAdmin, logoutAdmin, saveProduct, seedProducts as uploadSeedProducts, setOrderStatus, submitOrder, watchAuth, watchOrders, watchProducts } from "./firebase";
+import { ADMIN_EMAIL, closeCashRegister, loginAdmin, logoutAdmin, openCashRegister, saveProduct, seedProducts as uploadSeedProducts, setOrderStatus, submitOrder, watchAuth, watchCashRegister, watchOrders, watchProducts, type CashRegister } from "./firebase";
 
 type View = "pedidos" | "produtos" | "mesas" | "caixa" | "cardapio";
 type OrderStatus = "novo" | "preparo" | "pronto" | "concluido";
@@ -68,9 +68,13 @@ export default function Home() {
   const [customer, setCustomer] = useState("");
   const [delivery, setDelivery] = useState({ phone: "", street: "", number: "", neighborhood: "", complement: "" });
   const [formError, setFormError] = useState("");
-  const [cashOpen, setCashOpen] = useState(false);
+  const [cashRegister, setCashRegister] = useState<CashRegister | null>(null);
+  const [cashResolved, setCashResolved] = useState(false);
   const [cashStart, setCashStart] = useState(100);
-  const [modal, setModal] = useState<"product" | "cash" | null>(null);
+  const [cashClosing, setCashClosing] = useState(0);
+  const [cashError, setCashError] = useState("");
+  const [cashSaving, setCashSaving] = useState(false);
+  const [modal, setModal] = useState<"product" | "cash" | "cash-close" | null>(null);
   const [printOrder, setPrintOrder] = useState<Order | null>(null);
   const [toast, setToast] = useState("");
   const [installEvent, setInstallEvent] = useState<Event | null>(null);
@@ -127,6 +131,18 @@ export default function Home() {
     return stopOrders;
   }, [adminUser, remoteProductsEmpty]);
 
+  useEffect(() => {
+    if (!adminUser) return;
+    return watchCashRegister((current) => {
+      setCashRegister(current);
+      setCashResolved(true);
+      if (current?.status !== "open") {
+        setView("caixa");
+        setModal("cash");
+      }
+    });
+  }, [adminUser]);
+
   const categories = useMemo(() => ["Todos", ...Array.from(new Set(products.map((p) => p.category)))], [products]);
   const visibleProducts = products.filter((p) => p.active && (category === "Todos" || p.category === category));
   const cartItems = products.filter((p) => cart[p.id]).map((p) => ({ ...p, quantity: cart[p.id] }));
@@ -134,6 +150,7 @@ export default function Home() {
   const deliveryFee = orderType === "Delivery" && subtotal ? 6 : 0;
   const activeOrders = orders.filter((o) => o.status !== "concluido");
   const todayTotal = orders.reduce((sum, order) => sum + order.total, 0);
+  const cashOpen = cashRegister?.status === "open";
 
   function notify(message: string) {
     setToast(message);
@@ -217,6 +234,42 @@ export default function Home() {
     }
   }
 
+  async function handleOpenCash(event: FormEvent) {
+    event.preventDefault();
+    if (!adminUser || cashStart < 0) return;
+    setCashSaving(true);
+    setCashError("");
+    try {
+      const opened = await openCashRegister(cashStart, adminUser);
+      setCashRegister(opened);
+      setModal(null);
+      notify("Caixa aberto com sucesso");
+    } catch {
+      setCashError("Nao foi possivel abrir o caixa. Verifique a conexao e as regras do Firebase.");
+    } finally {
+      setCashSaving(false);
+    }
+  }
+
+  async function handleCloseCash(event: FormEvent) {
+    event.preventDefault();
+    if (!adminUser || !cashRegister || cashRegister.status !== "open" || cashClosing < 0) return;
+    setCashSaving(true);
+    setCashError("");
+    try {
+      const closed = await closeCashRegister(cashRegister, cashClosing, adminUser);
+      setCashRegister(closed);
+      setCashStart(100);
+      setCashClosing(0);
+      setModal("cash");
+      notify("Caixa fechado. Abra um novo caixa para continuar.");
+    } catch {
+      setCashError("Nao foi possivel fechar o caixa. Tente novamente.");
+    } finally {
+      setCashSaving(false);
+    }
+  }
+
   function toggleProduct(product: Product) {
     const updated = { ...product, active: !product.active };
     setProducts((current) => current.map((item) => item.id === product.id ? updated : item));
@@ -288,7 +341,7 @@ export default function Home() {
     );
   }
 
-  if (!routeResolved || !authResolved) {
+  if (!routeResolved || !authResolved || (adminUser && !cashResolved)) {
     return <main className="admin-login"><div className="login-card"><div className="login-logo">DF</div><h1>DeliveryFlow</h1><p>Conectando ao sistema...</p></div></main>;
   }
 
@@ -328,14 +381,15 @@ export default function Home() {
         </>}
 
         {view === "caixa" && <>
-          <div className={`cash-hero ${cashOpen ? "is-open" : ""}`}><div><span className="cash-symbol">R$</span><div><small>SITUAÇÃO DO CAIXA</small><h2>{cashOpen ? "Caixa aberto" : "Caixa fechado"}</h2><p>{cashOpen ? "Aberto hoje às 17:30 por Estevão Silva" : "Abra o caixa para começar a registrar recebimentos."}</p></div></div><button className={cashOpen ? "secondary" : "primary"} onClick={() => cashOpen ? setCashOpen(false) : setModal("cash")}>{cashOpen ? "Fechar caixa" : "Abrir caixa"}</button></div>
-          <div className="cash-grid"><article><small>Saldo inicial</small><strong>{money.format(cashOpen ? cashStart : 0)}</strong><span>Dinheiro em caixa</span></article><article><small>Vendas no dinheiro</small><strong>{money.format(cashOpen ? 186.5 : 0)}</strong><span>4 pagamentos</span></article><article><small>PIX e cartão</small><strong>{money.format(cashOpen ? todayTotal - 186.5 : 0)}</strong><span>8 pagamentos</span></article><article><small>Saldo esperado</small><strong>{money.format(cashOpen ? cashStart + 186.5 : 0)}</strong><span>Valor físico esperado</span></article></div>
-          <div className="table-card cash-history"><div className="card-title"><div><span>Movimentações de hoje</span><h2>Histórico do caixa</h2></div><button className="secondary" disabled={!cashOpen}>+ Nova movimentação</button></div><table><thead><tr><th>Horário</th><th>Descrição</th><th>Tipo</th><th>Forma</th><th>Valor</th></tr></thead><tbody><tr><td>17:30</td><td><strong>Abertura de caixa</strong></td><td><span className="tag">Entrada</span></td><td>Dinheiro</td><td><strong>{money.format(cashOpen ? cashStart : 0)}</strong></td></tr><tr><td>19:36</td><td><strong>Pedido #1041</strong></td><td><span className="tag green-tag">Venda</span></td><td>PIX</td><td><strong>{money.format(48.9)}</strong></td></tr></tbody></table></div>
+          <div className={`cash-hero ${cashOpen ? "is-open" : ""}`}><div><span className="cash-symbol">R$</span><div><small>SITUAÇÃO DO CAIXA</small><h2>{cashOpen ? "Caixa aberto" : "Caixa fechado"}</h2><p>{cashOpen && cashRegister ? `Aberto em ${new Date(cashRegister.openedAt).toLocaleString("pt-BR")} por ${cashRegister.openedByName}` : "Abra o caixa para começar a registrar recebimentos."}</p></div></div><button className={cashOpen ? "secondary" : "primary"} onClick={() => { setCashError(""); setModal(cashOpen ? "cash-close" : "cash"); }}>{cashOpen ? "Fechar caixa" : "Abrir caixa"}</button></div>
+          <div className="cash-grid"><article><small>Saldo inicial</small><strong>{money.format(cashOpen ? cashRegister?.openingAmount || 0 : 0)}</strong><span>Dinheiro em caixa</span></article><article><small>Vendas no dinheiro</small><strong>{money.format(cashOpen ? 186.5 : 0)}</strong><span>4 pagamentos</span></article><article><small>PIX e cartão</small><strong>{money.format(cashOpen ? todayTotal - 186.5 : 0)}</strong><span>8 pagamentos</span></article><article><small>Saldo esperado</small><strong>{money.format(cashOpen ? (cashRegister?.openingAmount || 0) + 186.5 : 0)}</strong><span>Valor físico esperado</span></article></div>
+          <div className="table-card cash-history"><div className="card-title"><div><span>Movimentações de hoje</span><h2>Histórico do caixa</h2></div><button className="secondary" disabled={!cashOpen}>+ Nova movimentação</button></div><table><thead><tr><th>Horário</th><th>Descrição</th><th>Tipo</th><th>Forma</th><th>Valor</th></tr></thead><tbody><tr><td>{cashRegister?.openedAt ? new Date(cashRegister.openedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "--:--"}</td><td><strong>Abertura de caixa</strong></td><td><span className="tag">Entrada</span></td><td>Dinheiro</td><td><strong>{money.format(cashOpen ? cashRegister?.openingAmount || 0 : 0)}</strong></td></tr><tr><td>19:36</td><td><strong>Pedido #1041</strong></td><td><span className="tag green-tag">Venda</span></td><td>PIX</td><td><strong>{money.format(48.9)}</strong></td></tr></tbody></table></div>
         </>}
       </section>
 
       {modal === "product" && <div className="modal-backdrop" onMouseDown={() => setModal(null)}><form className="modal" onSubmit={addProduct} onMouseDown={(e) => e.stopPropagation()}><div className="modal-head"><div><small>NOVO ITEM</small><h2>Cadastrar produto</h2></div><button type="button" onClick={() => setModal(null)}>×</button></div><label>Nome do produto<input value={newProduct.name} onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })} placeholder="Ex.: X-Salada especial" autoFocus /></label><div className="form-row"><label>Categoria<select value={newProduct.category} onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}><option>Lanches</option><option>Porções</option><option>Bebidas</option><option>Sobremesas</option></select></label><label>Preço<input value={newProduct.price} onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })} placeholder="0,00" inputMode="decimal" /></label></div><label>Descrição<textarea value={newProduct.description} onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} placeholder="Ingredientes e detalhes" /></label><div className="modal-actions"><button type="button" className="secondary" onClick={() => setModal(null)}>Cancelar</button><button className="primary">Salvar produto</button></div></form></div>}
-      {modal === "cash" && <div className="modal-backdrop" onMouseDown={() => setModal(null)}><form className="modal small-modal" onSubmit={(e) => { e.preventDefault(); setCashOpen(true); setModal(null); notify("Caixa aberto com sucesso"); }} onMouseDown={(e) => e.stopPropagation()}><div className="modal-head"><div><small>INÍCIO DO TURNO</small><h2>Abrir caixa</h2></div><button type="button" onClick={() => setModal(null)}>×</button></div><label>Valor inicial em dinheiro<input type="number" value={cashStart} onChange={(e) => setCashStart(Number(e.target.value))} /></label><p className="helper">Informe o valor disponível na gaveta antes da primeira venda.</p><button className="primary wide">Confirmar abertura</button></form></div>}
+      {modal === "cash" && <div className="modal-backdrop"><form className="modal small-modal" onSubmit={handleOpenCash} onMouseDown={(e) => e.stopPropagation()}><div className="modal-head"><div><small>INÍCIO DO TURNO</small><h2>Abrir caixa</h2></div></div><label>Valor inicial em dinheiro<input type="number" min="0" step="0.01" value={cashStart} onChange={(e) => setCashStart(Number(e.target.value))} autoFocus /></label><p className="helper">A abertura é obrigatória antes de usar o PDV. Informe o valor disponível na gaveta.</p>{cashError && <p className="form-error" role="alert">! {cashError}</p>}<button className="primary wide" disabled={cashSaving}>{cashSaving ? "Abrindo caixa..." : "Confirmar abertura"}</button></form></div>}
+      {modal === "cash-close" && cashRegister && <div className="modal-backdrop" onMouseDown={() => setModal(null)}><form className="modal small-modal" onSubmit={handleCloseCash} onMouseDown={(e) => e.stopPropagation()}><div className="modal-head"><div><small>FIM DO TURNO</small><h2>Fechar caixa</h2></div><button type="button" onClick={() => setModal(null)}>×</button></div><label>Valor contado em dinheiro<input type="number" min="0" step="0.01" value={cashClosing} onChange={(e) => setCashClosing(Number(e.target.value))} autoFocus /></label><p className="helper">Conte o dinheiro da gaveta. O fechamento ficará registrado com data, horário e operador.</p>{cashError && <p className="form-error" role="alert">! {cashError}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={() => setModal(null)}>Cancelar</button><button className="primary" disabled={cashSaving}>{cashSaving ? "Fechando..." : "Confirmar fechamento"}</button></div></form></div>}
 
       {printOrder && <section className="print-ticket"><h1>DELIVERYFLOW</h1><p>COMANDA DE PRODUÇÃO</p><hr /><h2>PEDIDO #{printOrder.id}</h2><h3>{printOrder.reference} · {printOrder.time}</h3>{printOrder.origin === "Delivery" && <><p><b>CLIENTE:</b> {printOrder.customer}</p><p><b>TELEFONE:</b> {printOrder.phone}</p><p><b>ENDEREÇO:</b> {printOrder.deliveryAddress}</p></>}<hr />{printOrder.items.map((item) => <p className="ticket-item" key={item.productId}><b>{item.quantity}x</b> {item.name}</p>)}{printOrder.note && <><hr /><strong>OBSERVAÇÃO:</strong><p>{printOrder.note}</p></>}<hr /><p>Impresso em {new Date().toLocaleString("pt-BR")}</p></section>}
       {toast && <div className="toast">✓ {toast}</div>}
