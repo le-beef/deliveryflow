@@ -1,0 +1,10 @@
+{
+  "name": "DeliveryFlow PDV",
+  "short_name": "DeliveryFlow",
+  "description": "PDV, delivery e pedidos por QR Code",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f4ef",
+  "theme_color": "#171812",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
