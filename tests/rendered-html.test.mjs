@@ -85,6 +85,21 @@ test("separates the LAN server, PDV terminals and local waiter access", async ()
   assert.match(store, /network_entities/);
 });
 
+test("connects only the LAN server to the protected online-order inbox", async () => {
+  const [page, firebase, serverMain, connectorCss] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/firebase.ts", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/server-main.cjs", import.meta.url), "utf8"),
+    readFile(new URL("../app/online-connector.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(serverMain, /http:\/\/localhost:3030\/\?desktop=1&network=server/);
+  assert.doesNotMatch(serverMain, /http:\/\/127\.0\.0\.1:3030/);
+  assert.match(page, /networkInfo\?\.mode === "server"/);
+  assert.match(page, /Pedidos online conectados/);
+  assert.match(firebase, /watchOrders<[\s\S]*onError/);
+  assert.match(connectorCss, /display: block !important/);
+});
+
 test("keeps customers, exclusive service modes and GitHub updates", async () => {
   const [page, waiter, store, updater] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),

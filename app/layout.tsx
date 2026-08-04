@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./online-connector.css";
 
 export const metadata: Metadata = {
   title: "DeliveryFlow — PDV e pedidos online",

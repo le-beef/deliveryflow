@@ -99,11 +99,11 @@ export async function saveCategories(categories: string[]) {
   await set(ref(database, "settings/categories"), categories);
 }
 
-export function watchOrders<T extends object>(callback: (orders: Array<T & { firebaseKey: string }>) => void) {
+export function watchOrders<T extends object>(callback: (orders: Array<T & { firebaseKey: string }>) => void, onError?: (error: Error) => void) {
   return onValue(ref(database, "orders"), (snapshot) => {
     const value = snapshot.val() as Record<string, T> | null;
     callback(value ? Object.entries(value).map(([firebaseKey, order]) => ({ ...order, firebaseKey })) : []);
-  });
+  }, (error) => onError?.(error));
 }
 
 export async function saveProduct<T extends { id: number }>(product: T) {
