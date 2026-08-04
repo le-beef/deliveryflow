@@ -1,0 +1,27 @@
+const { contextBridge, ipcRenderer } = require("electron");
+
+contextBridge.exposeInMainWorld("deliveryflowDesktop", {
+  platform: "windows",
+  networkInfo: () => ipcRenderer.invoke("network:info"),
+  configureNetwork: (payload) => ipcRenderer.invoke("network:configure", payload),
+  testNetwork: (payload) => ipcRenderer.invoke("network:test", payload),
+  launchNetwork: () => ipcRenderer.invoke("network:launch"),
+  networkSnapshot: () => ipcRenderer.invoke("network:snapshot"),
+  saveNetworkEntity: (payload) => ipcRenderer.invoke("network:save-entity", payload),
+  deleteNetworkEntity: (payload) => ipcRenderer.invoke("network:delete-entity", payload),
+  login: (credentials) => ipcRenderer.invoke("local:login", credentials),
+  listUsers: () => ipcRenderer.invoke("local:list-users"),
+  saveUser: (payload) => ipcRenderer.invoke("local:save-user", payload),
+  deleteUser: (payload) => ipcRenderer.invoke("local:delete-user", payload),
+  authorizeManager: (payload) => ipcRenderer.invoke("local:authorize-manager", payload),
+  listAudit: () => ipcRenderer.invoke("local:list-audit"),
+  enqueueSync: (payload) => ipcRenderer.invoke("sync:enqueue", payload),
+  pendingSync: () => ipcRenderer.invoke("sync:pending"),
+  markSynced: (syncId) => ipcRenderer.invoke("sync:mark", syncId),
+  currentCash: () => ipcRenderer.invoke("cash:current"),
+  openCash: (payload) => ipcRenderer.invoke("cash:open", payload),
+  closeCash: (payload) => ipcRenderer.invoke("cash:close", payload),
+  addCashMovement: (payload) => ipcRenderer.invoke("cash:movement", payload),
+  listCashMovements: (sessionId) => ipcRenderer.invoke("cash:movements", sessionId),
+  listCashSessions: () => ipcRenderer.invoke("cash:sessions"),
+});

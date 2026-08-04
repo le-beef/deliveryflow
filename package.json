@@ -1,0 +1,73 @@
+{
+  "name": "deliveryflow-pdv",
+  "version": "0.2.0",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "build:firebase": "next build",
+    "start": "next start",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "deploy:firebase": "npm run build:firebase && firebase deploy --only hosting",
+    "desktop": "npm run build && electron .",
+    "desktop:dev": "npm run build && electron .",
+    "desktop:installer": "npm run build && electron-builder --win nsis",
+    "desktop:server": "npm run build && electron --no-sandbox desktop/server-main.cjs",
+    "desktop:terminal": "npm run build && electron --no-sandbox desktop/terminal-main.cjs",
+    "installer:server": "npm run build && electron-builder --win nsis --config electron-builder.server.json",
+    "installer:terminal": "npm run build && electron-builder --win nsis --config electron-builder.terminal.json"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2",
+    "firebase": "^12.17.0",
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3"
+  },
+  "type": "module",
+  "build": {
+    "appId": "com.deliveryflow.pdv",
+    "productName": "DeliveryFlow PDV",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**/*",
+      "out/**/*",
+      "public/**/*",
+      "printer-agent/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "printer-agent/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "public/deliveryflow-icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DeliveryFlow PDV"
+    }
+  }
+}

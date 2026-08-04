@@ -1,0 +1,12 @@
+{
+  "appId": "com.deliveryflow.terminal",
+  "productName": "DeliveryFlow PDV",
+  "artifactName": "DeliveryFlow-PDV-Setup-${version}.${ext}",
+  "directories": { "output": "release-terminal" },
+  "extraMetadata": { "main": "desktop/terminal-main.cjs" },
+  "publish": [{ "provider": "github", "owner": "le-beef", "repo": "deliveryflow", "channel": "terminal" }],
+  "files": ["desktop/**/*", "out/**/*", "public/**/*", "printer-agent/**/*", "package.json"],
+  "asarUnpack": ["printer-agent/**/*"],
+  "win": { "target": "nsis", "icon": "public/deliveryflow-icon.png" },
+  "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true, "shortcutName": "DeliveryFlow PDV" }
+}
