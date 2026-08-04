@@ -512,6 +512,8 @@ export default function Home() {
       }
       knownOrderKeys.current = keys;
       setOrders((current) => desktopMode ? [...sorted, ...current.filter((local) => !local.firebaseKey || !keys.has(local.firebaseKey))].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)) : sorted);
+    }, (error) => {
+      notify(`Pedidos online: ${error.message || "não foi possível ler a fila do Firebase."}`);
     });
     if (!desktopMode && remoteProductsEmpty) uploadSeedProducts(seedProducts).catch(() => notify("Não foi possível enviar os produtos iniciais"));
     return stopOrders;
@@ -1030,7 +1032,9 @@ export default function Home() {
     try {
       await loginAdmin();
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Não foi possível entrar.");
+      const message = error instanceof Error ? error.message : "Não foi possível conectar os pedidos online.";
+      setAuthError(message);
+      notify(`Firebase: ${message}`);
     }
   }
 

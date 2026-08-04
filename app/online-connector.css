@@ -1,0 +1,7 @@
+.top-actions > button.secondary {
+  display: block !important;
+}
+
+.top-actions > button.secondary:first-of-type {
+  min-height: 38px;
+}
