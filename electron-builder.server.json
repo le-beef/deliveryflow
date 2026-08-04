@@ -1,0 +1,12 @@
+{
+  "appId": "com.deliveryflow.server",
+  "productName": "DeliveryFlow Servidor",
+  "artifactName": "DeliveryFlow-Servidor-Setup-${version}.${ext}",
+  "directories": { "output": "release-server" },
+  "extraMetadata": { "main": "desktop/server-main.cjs" },
+  "publish": [{ "provider": "github", "owner": "le-beef", "repo": "deliveryflow", "channel": "server" }],
+  "files": ["desktop/**/*", "out/**/*", "public/**/*", "printer-agent/**/*", "package.json"],
+  "asarUnpack": ["printer-agent/**/*"],
+  "win": { "target": "nsis", "icon": "public/deliveryflow-icon.png" },
+  "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true, "shortcutName": "DeliveryFlow Servidor" }
+}

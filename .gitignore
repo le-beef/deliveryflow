@@ -40,3 +40,8 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/printer-agent/last-preview*.png
+/.firebase/
+/installer-output/
+/release/
+/installer/

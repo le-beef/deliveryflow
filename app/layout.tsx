@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: "DeliveryFlow — PDV e pedidos online",
   description: "PDV instalável com pedidos por delivery e QR Code na mesa.",
   manifest: "/manifest.webmanifest",
-  icons: { icon: "/favicon.svg", apple: "/favicon.svg" },
+  icons: { icon: "/deliveryflow-icon.png", apple: "/deliveryflow-icon.png" },
 };
 
 export const viewport: Viewport = { themeColor: "#171812", width: "device-width", initialScale: 1 };

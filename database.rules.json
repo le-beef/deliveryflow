@@ -6,13 +6,46 @@
       ".read": true,
       ".write": "auth != null && auth.token.email == 'albano.tiago.esteves@gmail.com'"
     },
+    "settings": {
+      "business": {
+        ".read": true,
+        ".write": "auth != null && auth.token.email == 'albano.tiago.esteves@gmail.com'"
+      },
+      "store": {
+        ".read": true,
+        ".write": "auth != null && auth.token.email == 'albano.tiago.esteves@gmail.com'"
+      },
+      "serviceUnits": {
+        ".read": true,
+        ".write": "auth != null && auth.token.email == 'albano.tiago.esteves@gmail.com'"
+      },
+      "categories": {
+        ".read": true,
+        ".write": "auth != null && auth.token.email == 'albano.tiago.esteves@gmail.com'"
+      }
+    },
     "orders": {
+      ".read": "auth != null && (auth.token.email == 'albano.tiago.esteves@gmail.com' || root.child('staffProfiles').child(auth.uid).child('active').val() == true)",
       ".indexOn": ["createdAt", "status"],
       "$orderId": {
-        ".read": "auth != null && (auth.token.email == 'albano.tiago.esteves@gmail.com' || data.child('createdBy').val() == auth.uid)",
+        ".read": "auth != null && (auth.token.email == 'albano.tiago.esteves@gmail.com' || data.child('createdBy').val() == auth.uid || root.child('staffProfiles').child(auth.uid).child('active').val() == true)",
         ".write": "auth != null && ((!data.exists() && newData.child('createdBy').val() == auth.uid) || auth.token.email == 'albano.tiago.esteves@gmail.com')",
         ".validate": "newData.hasChildren(['id', 'origin', 'reference', 'customer', 'items', 'total', 'status', 'createdBy', 'createdAt'])"
       }
+    },
+    "staffProfiles": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid == $uid || auth.token.email == 'albano.tiago.esteves@gmail.com')",
+        ".write": "auth != null && auth.token.email == 'albano.tiago.esteves@gmail.com'"
+      }
+    },
+    "security": {
+      ".read": false,
+      ".write": false
+    },
+    "audit": {
+      ".read": "auth != null && auth.token.email == 'albano.tiago.esteves@gmail.com'",
+      ".write": "auth != null && auth.token.email == 'albano.tiago.esteves@gmail.com'"
     },
     "cash": {
       ".read": "auth != null && auth.token.email == 'albano.tiago.esteves@gmail.com'",
