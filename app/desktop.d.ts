@@ -14,6 +14,9 @@ declare global {
       saveNetworkEntity(payload: { entityType: string; entityId: string; data: unknown }): Promise<unknown>;
       deleteNetworkEntity(payload: { entityType: string; entityId: string }): Promise<void>;
       login(credentials: { username: string; password: string }): Promise<DesktopUser>;
+      loadRememberedLogin(): Promise<{ username: string; password: string } | null>;
+      saveRememberedLogin(credentials: { username: string; password: string }): Promise<{ saved: boolean; username: string }>;
+      clearRememberedLogin(): Promise<{ saved: boolean }>;
       listUsers(): Promise<DesktopUser[]>;
       saveUser(payload: { actorId: string; user: Partial<DesktopUser> & { name: string; username: string; role: DesktopRole; password?: string; pin?: string } }): Promise<DesktopUser>;
       deleteUser(payload: { actorId: string; userId: string }): Promise<void>;

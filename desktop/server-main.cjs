@@ -2,10 +2,12 @@ const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const os = require("node:os"); const path = require("node:path"); const { spawn } = require("node:child_process");
 const store = require("./local-store.cjs"); const { startNetworkServer } = require("./network-server.cjs");
 const { configureUpdater } = require("./updater.cjs");
+const { registerRememberedLoginIpc } = require("./remembered-login.cjs");
 let mainWindow; let server; let printerAgent;
 function lanAddresses() { const result = []; for (const entries of Object.values(os.networkInterfaces())) for (const entry of entries || []) if (entry.family === "IPv4" && !entry.internal) result.push(entry.address); return result; }
 function startPrinterAgent() { const script = app.isPackaged ? path.join(process.resourcesPath, "app.asar.unpacked", "printer-agent", "DeliveryFlow.PrintAgent.ps1") : path.join(__dirname, "..", "printer-agent", "DeliveryFlow.PrintAgent.ps1"); printerAgent = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script], { windowsHide: true, stdio: "ignore" }); printerAgent.unref(); }
 function registerIpc() {
+  registerRememberedLoginIpc(ipcMain);
   ipcMain.handle("network:info", () => ({ mode: "server", configured: true, terminalId: "servidor", terminalName: "Servidor", serverHost: "127.0.0.1", serverPort: 3030, lanAddresses: lanAddresses(), waiterUrls: lanAddresses().map((ip) => `http://${ip}:3030/garcom`) }));
   ipcMain.handle("network:snapshot", () => store.networkSnapshot()); ipcMain.handle("network:save-entity", (_e,p) => store.saveEntity(p.entityType,p.entityId,p.data)); ipcMain.handle("network:delete-entity", (_e,p) => store.deleteEntity(p.entityType,p.entityId));
   ipcMain.handle("local:login", (_e,p) => store.login(p.username,p.password)); ipcMain.handle("local:list-users", () => store.listUsers()); ipcMain.handle("local:save-user", (_e,p) => store.saveUser(p.actorId,p.user)); ipcMain.handle("local:delete-user", (_e,p) => store.deleteUser(p.actorId,p.userId)); ipcMain.handle("local:authorize-manager", (_e,p) => store.authorizeManager(p.username,p.secret)); ipcMain.handle("local:list-audit", () => store.listAudit());

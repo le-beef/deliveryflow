@@ -1,6 +1,6 @@
 {
   "name": "deliveryflow-pdv",
-  "version": "0.2.5",
+  "version": "0.2.9",
   "private": true,
   "main": "desktop/main.cjs",
   "engines": {
