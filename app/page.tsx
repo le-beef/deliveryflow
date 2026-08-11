@@ -114,7 +114,7 @@ type Order = {
 type ServiceUnit = { id: string; number: string; label: string; type: "mesa" | "comanda"; active: boolean; openedAt?: number; customer?: string; customerId?: string; customerIds?: string[]; currentTable?: string; qrCodeId?: string };
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-const APP_VERSION = "0.2.0";
+const APP_VERSION = "0.2.5";
 
 const seedProducts: Product[] = [
   { id: 1, name: "X-Burger da casa", category: "Lanches", price: 24.9, description: "Pão brioche, carne 150g, queijo, salada e molho da casa.", emoji: "🍔", active: true },
@@ -164,6 +164,22 @@ function normalizePrinterConfig(config: Partial<PrinterConfig> | undefined, sect
     },
   };
 }
+
+function cleanNetworkValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(cleanNetworkValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => key !== "networkId" && key !== "networkUpdatedAt")
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, nested]) => [key, cleanNetworkValue(nested)]));
+}
+
+function networkSignature(value: unknown) { return JSON.stringify(cleanNetworkValue(value)); }
+function stableProducts(items: Product[]) { return [...items].sort((left, right) => left.category.localeCompare(right.category, "pt-BR", { numeric: true }) || left.id - right.id || left.name.localeCompare(right.name, "pt-BR", { numeric: true })); }
+function stableServiceUnits(items: ServiceUnit[]) { return [...items].sort((left, right) => left.type.localeCompare(right.type) || (Number(left.number) || 0) - (Number(right.number) || 0) || left.label.localeCompare(right.label, "pt-BR", { numeric: true }) || left.id.localeCompare(right.id)); }
+function stableOrders(items: Order[]) { return [...items].sort((left, right) => (right.createdAt || 0) - (left.createdAt || 0) || right.id - left.id); }
+function stableCustomers(items: Customer[]) { return [...items].sort((left, right) => left.name.localeCompare(right.name, "pt-BR", { numeric: true }) || left.id.localeCompare(right.id)); }
+function stableCategories(items: string[]) { return [...new Set(items)].sort((left, right) => left.localeCompare(right, "pt-BR", { numeric: true })); }
 
 async function sendDirectPrint(order: Order, sector: PrinterSector, config: PrinterConfig, store: StoreSettings) {
   const isCashReport = (order as Order & { reportType?: string }).reportType === "cash-close";
@@ -282,6 +298,7 @@ export default function Home() {
   const extraPrintersRef = useRef(extraPrinters);
   const storeRef = useRef(store);
   const productsRef = useRef(products);
+  const networkSignatures = useRef<Record<string, string>>({});
   const [newProduct, setNewProduct] = useState({ name: "", category: "Lanches", price: "", description: "", emoji: "🍽️", imageDataUrl: "", featured: false });
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
 
@@ -365,14 +382,14 @@ export default function Home() {
       try {
         const [info, snapshot] = await Promise.all([bridge.networkInfo(), bridge.networkSnapshot()]);
         if (!active) return;
-        setNetworkInfo(info);
-        if (snapshot.orders.length) setOrders(snapshot.orders as unknown as Order[]);
-        if (snapshot.products.length) setProducts(snapshot.products as unknown as Product[]);
-        if (snapshot.categories.length) setCustomCategories(snapshot.categories.map((item) => String(item.value || "")).filter(Boolean));
-        if (snapshot.serviceUnits.length) setServiceUnits(snapshot.serviceUnits as unknown as ServiceUnit[]);
-        if (snapshot.customers.length) setCustomers(snapshot.customers as unknown as Customer[]);
+        setNetworkInfo((current) => networkSignature(current) === networkSignature(info) ? current : info);
+        if (snapshot.orders.length) { const next = stableOrders(snapshot.orders as unknown as Order[]); networkSignatures.current.orders = networkSignature(next); setOrders((current) => networkSignature(current) === networkSignatures.current.orders ? current : next); }
+        if (snapshot.products.length) { const next = stableProducts(snapshot.products as unknown as Product[]); networkSignatures.current.products = networkSignature(next); setProducts((current) => networkSignature(current) === networkSignatures.current.products ? current : next); }
+        if (snapshot.categories.length) { const next = stableCategories(snapshot.categories.map((item) => String(item.value || "")).filter(Boolean)); networkSignatures.current.categories = networkSignature(next); setCustomCategories((current) => networkSignature(current) === networkSignatures.current.categories ? current : next); }
+        if (snapshot.serviceUnits.length) { const next = stableServiceUnits(snapshot.serviceUnits as unknown as ServiceUnit[]); networkSignatures.current.serviceUnits = networkSignature(next); setServiceUnits((current) => networkSignature(current) === networkSignatures.current.serviceUnits ? current : next); }
+        if (snapshot.customers.length) { const next = stableCustomers(snapshot.customers as unknown as Customer[]); networkSignatures.current.customers = networkSignature(next); setCustomers((current) => networkSignature(current) === networkSignatures.current.customers ? current : next); }
         const storeSetting = snapshot.settings.find((item) => item.networkId === "store");
-        if (storeSetting) setStore((current) => ({ ...current, ...(storeSetting as unknown as Partial<StoreSettings>) }));
+        if (storeSetting) setStore((current) => { const next = { ...current, ...(cleanNetworkValue(storeSetting) as Partial<StoreSettings>) }; networkSignatures.current.store = networkSignature(next); return networkSignature(current) === networkSignatures.current.store ? current : next; });
         setNetworkReady(true);
       } catch { if (active) setNetworkReady(false); }
     }
@@ -382,21 +399,16 @@ export default function Home() {
 
   useEffect(() => {
     if (!networkReady || !desktopUser || !window.deliveryflowDesktop) return;
-    const timer = window.setTimeout(() => { for (const order of orders) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "order", entityId: String(order.firebaseKey || (order as Order & { networkId?: string }).networkId || order.id), data: order }); }, 250);
+    const signature = networkSignature(orders); if (networkSignatures.current.orders === signature) return; networkSignatures.current.orders = signature;
+    const timer = window.setTimeout(() => { for (const order of orders) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "order", entityId: String(order.firebaseKey || (order as Order & { networkId?: string }).networkId || order.id), data: cleanNetworkValue(order) }); }, 250);
     return () => window.clearTimeout(timer);
   }, [desktopUser, networkReady, orders]);
 
-  useEffect(() => {
-    if (!networkReady || desktopUser?.role !== "admin" || !window.deliveryflowDesktop) return;
-    const timer = window.setTimeout(() => {
-      for (const product of products) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "product", entityId: String(product.id), data: product });
-      for (const unit of serviceUnits) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "serviceUnit", entityId: unit.id, data: unit });
-      for (const category of customCategories) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "category", entityId: category, data: { value: category } });
-      for (const savedCustomer of customers) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "customer", entityId: savedCustomer.id, data: savedCustomer });
-      void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "setting", entityId: "store", data: store });
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [customCategories, customers, desktopUser, networkReady, products, serviceUnits, store]);
+  useEffect(() => { if (!networkReady || desktopUser?.role !== "admin" || !window.deliveryflowDesktop) return; const signature = networkSignature(products); if (networkSignatures.current.products === signature) return; networkSignatures.current.products = signature; const timer = window.setTimeout(() => { for (const product of products) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "product", entityId: String(product.id), data: cleanNetworkValue(product) }); }, 500); return () => window.clearTimeout(timer); }, [desktopUser, networkReady, products]);
+  useEffect(() => { if (!networkReady || desktopUser?.role !== "admin" || !window.deliveryflowDesktop) return; const signature = networkSignature(serviceUnits); if (networkSignatures.current.serviceUnits === signature) return; networkSignatures.current.serviceUnits = signature; const timer = window.setTimeout(() => { for (const unit of serviceUnits) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "serviceUnit", entityId: unit.id, data: cleanNetworkValue(unit) }); }, 500); return () => window.clearTimeout(timer); }, [desktopUser, networkReady, serviceUnits]);
+  useEffect(() => { if (!networkReady || desktopUser?.role !== "admin" || !window.deliveryflowDesktop) return; const signature = networkSignature(customCategories); if (networkSignatures.current.categories === signature) return; networkSignatures.current.categories = signature; const timer = window.setTimeout(() => { for (const savedCategory of customCategories) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "category", entityId: savedCategory, data: { value: savedCategory } }); }, 500); return () => window.clearTimeout(timer); }, [customCategories, desktopUser, networkReady]);
+  useEffect(() => { if (!networkReady || desktopUser?.role !== "admin" || !window.deliveryflowDesktop) return; const signature = networkSignature(customers); if (networkSignatures.current.customers === signature) return; networkSignatures.current.customers = signature; const timer = window.setTimeout(() => { for (const savedCustomer of customers) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "customer", entityId: savedCustomer.id, data: cleanNetworkValue(savedCustomer) }); }, 500); return () => window.clearTimeout(timer); }, [customers, desktopUser, networkReady]);
+  useEffect(() => { if (!networkReady || desktopUser?.role !== "admin" || !window.deliveryflowDesktop) return; const signature = networkSignature(store); if (networkSignatures.current.store === signature) return; networkSignatures.current.store = signature; const timer = window.setTimeout(() => { void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "setting", entityId: "store", data: cleanNetworkValue(store) }); }, 500); return () => window.clearTimeout(timer); }, [desktopUser, networkReady, store]);
 
   useEffect(() => { localStorage.setItem("deliveryflow-products", JSON.stringify(products)); }, [products]);
   useEffect(() => { localStorage.setItem("deliveryflow-orders", JSON.stringify(orders)); }, [orders]);
@@ -450,7 +462,7 @@ export default function Home() {
 
   useEffect(() => { if (desktopMode) return; return watchProducts<Product>((remoteProducts) => {
     if (remoteProducts?.length) {
-      setProducts(remoteProducts);
+      setProducts(stableProducts(remoteProducts));
       setRemoteProductsEmpty(false);
     } else {
       setRemoteProductsEmpty(true);
@@ -468,7 +480,7 @@ export default function Home() {
   }); }, [desktopMode]);
 
   useEffect(() => { if (desktopMode) return; return watchServiceUnits<ServiceUnit>((remoteUnits) => {
-    if (remoteUnits?.length) setServiceUnits(remoteUnits);
+    if (remoteUnits?.length) setServiceUnits(stableServiceUnits(remoteUnits));
     setServiceUnitsRemoteResolved(true);
   }); }, [desktopMode]);
 
