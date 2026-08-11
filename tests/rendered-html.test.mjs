@@ -98,7 +98,7 @@ test("connects only the LAN server to the protected online-order inbox", async (
   assert.match(page, /Pedidos online conectados/);
   assert.match(firebase, /watchOrders<[\s\S]*onError/);
   assert.match(connectorCss, /display: block !important/);
-  assert.match(page, /!routeResolved \|\| \(!desktopMode && !authResolved\)/);
+  assert.match(page, /!routeResolved \|\| \(!desktopMode && \(!authResolved \|\| \(adminUser && !cashResolved\)\)\)/);
   assert.match(page, /setAuthResolved\(true\)[\s\S]*O Firebase demorou para responder/);
   assert.match(page, /desktopRequested[\s\S]*getRegistrations\(\)/);
   assert.match(firebase, /watchAuth\([\s\S]*onError/);
