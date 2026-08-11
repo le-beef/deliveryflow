@@ -1,0 +1,80 @@
+.sidebar-bottom { position: relative; }
+.sidebar-version { color: #74796d; font-size: 9px; letter-spacing: .35px; padding: 3px 13px 7px; }
+.user-menu-wrap { position: relative; z-index: 72; }
+.user-menu-trigger { width: 100%; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.user-menu-trigger:hover { background: #242720; }
+.user-more { margin-left: auto; color: #7f8478; font-style: normal; letter-spacing: 1px; }
+.user-menu-backdrop { position: fixed; inset: 0; z-index: 70; border: 0; background: transparent; cursor: default; }
+.user-popover { position: absolute; z-index: 73; left: 0; right: 0; bottom: calc(100% + 8px); padding: 6px; border: 1px solid #3a3e35; border-radius: 11px; background: #242720; box-shadow: 0 12px 35px #0008; }
+.user-popover button { width: 100%; border: 0; border-radius: 8px; padding: 10px 11px; background: transparent; color: #f0b4a1; text-align: left; font-weight: 750; cursor: pointer; }
+.user-popover button:hover { background: #34382f; color: #fff; }
+.service-unit-edit-modal { width: min(520px, 94vw); }
+.service-unit-edit-grid { display: grid; grid-template-columns: 120px 1fr; gap: 12px; }
+.service-unit-edit-grid label { display: grid; gap: 6px; font-size: 10px; font-weight: 750; }
+.service-unit-edit-grid input { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 11px; background: #fff; }
+
+/* Dialogs share the same safe layout so fields never escape their window. */
+.modal-backdrop { overflow-y: auto; overscroll-behavior: contain; }
+.modal {
+  width: min(620px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 40px);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.modal *,
+.modal label,
+.form-row > *,
+.closing-fields > *,
+.order-detail-fields > *,
+.service-unit-edit-grid > * { min-width: 0; }
+.modal input:not([type="checkbox"]):not([type="radio"]),
+.modal select,
+.modal textarea,
+.modal .field {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+.form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.closing-fields,
+.order-detail-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.modal-head { gap: 16px; }
+.modal-head > div { min-width: 0; }
+.modal-head h2 { overflow-wrap: anywhere; }
+.modal-actions { flex-wrap: wrap; }
+.modal-actions button { max-width: 100%; }
+.team-user-modal .form-row:nth-of-type(2) label:last-child::after {
+  content: "Código numérico rápido para autorizar ações gerenciais. Você também pode usar a senha.";
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.desktop-login .remember-login {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: start;
+  gap: 9px;
+  margin: 14px 0;
+  cursor: pointer;
+}
+.desktop-login .remember-login input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--orange);
+}
+.desktop-login .remember-login span { display: grid; gap: 2px; }
+.desktop-login .remember-login b { font-size: 10px; }
+.desktop-login .remember-login small { color: var(--muted); font-size: 8px; font-weight: 500; letter-spacing: 0; }
+
+@media(max-width:620px){
+  .modal-backdrop { padding: 10px; align-items: start; }
+  .modal { width: calc(100vw - 20px); max-width: calc(100vw - 20px); max-height: calc(100vh - 20px); padding: 18px; margin: auto; }
+  .form-row,.closing-fields,.order-detail-fields,.service-unit-edit-grid { grid-template-columns: 1fr; }
+  .closing-fields label:first-child,.detail-wide { grid-column: auto; }
+  .modal-actions button { flex: 1 1 140px; }
+}
+@media(max-width:760px){.sidebar-version,.user-menu-wrap{display:none}}

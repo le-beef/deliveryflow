@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const { spawn } = require("node:child_process");
 const store = require("./local-store.cjs");
+const { registerRememberedLoginIpc } = require("./remembered-login.cjs");
 
 let mainWindow;
 let localServer;
@@ -50,6 +51,7 @@ async function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { if (url.startsWith("https://")) shell.openExternal(url); return { action: "deny" }; });
 }
 
+registerRememberedLoginIpc(ipcMain);
 ipcMain.handle("local:login", (_event, credentials) => store.login(credentials.username, credentials.password));
 ipcMain.handle("local:list-users", () => store.listUsers());
 ipcMain.handle("local:save-user", (_event, payload) => store.saveUser(payload.actorId, payload.user));

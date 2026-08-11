@@ -114,7 +114,7 @@ type Order = {
 type ServiceUnit = { id: string; number: string; label: string; type: "mesa" | "comanda"; active: boolean; openedAt?: number; customer?: string; customerId?: string; customerIds?: string[]; currentTable?: string; qrCodeId?: string };
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-const APP_VERSION = "0.2.5";
+const APP_VERSION = "0.2.9";
 
 const seedProducts: Product[] = [
   { id: 1, name: "X-Burger da casa", category: "Lanches", price: 24.9, description: "Pão brioche, carne 150g, queijo, salada e molho da casa.", emoji: "🍔", active: true },
@@ -207,6 +207,9 @@ export default function Home() {
   const [currentComandaTable, setCurrentComandaTable] = useState("");
   const [selectedUnit, setSelectedUnit] = useState<ServiceUnit | null>(null);
   const [newUnitLabel, setNewUnitLabel] = useState("");
+  const [editingServiceUnit, setEditingServiceUnit] = useState<ServiceUnit | null>(null);
+  const [serviceUnitEditError, setServiceUnitEditError] = useState("");
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [publicOrderMode, setPublicOrderMode] = useState<"delivery" | "table" | null>(null);
   const [products, setProducts] = useState<Product[]>(seedProducts);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -284,6 +287,8 @@ export default function Home() {
   const [desktopLogin, setDesktopLogin] = useState({ username: "", password: "" });
   const [desktopLoginError, setDesktopLoginError] = useState("");
   const [desktopLoginSaving, setDesktopLoginSaving] = useState(false);
+  const [rememberDesktopLogin, setRememberDesktopLogin] = useState(false);
+  const desktopAutoLoginChecked = useRef(false);
   const [teamUsers, setTeamUsers] = useState<DesktopUser[]>([]);
   const [editingTeamUser, setEditingTeamUser] = useState<(Partial<DesktopUser> & { name: string; username: string; role: DesktopRole; password: string; pin: string; onlineEmail: string; onlinePassword: string }) | null>(null);
   const [teamError, setTeamError] = useState("");
@@ -299,6 +304,7 @@ export default function Home() {
   const storeRef = useRef(store);
   const productsRef = useRef(products);
   const networkSignatures = useRef<Record<string, string>>({});
+  const networkServiceUnitIds = useRef<Set<string>>(new Set());
   const [newProduct, setNewProduct] = useState({ name: "", category: "Lanches", price: "", description: "", emoji: "🍽️", imageDataUrl: "", featured: false });
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
 
@@ -374,6 +380,34 @@ export default function Home() {
   }, [desktopUser]);
 
   useEffect(() => {
+    if (!routeResolved || !desktopMode || desktopUser || desktopAutoLoginChecked.current || !window.deliveryflowDesktop) return;
+    desktopAutoLoginChecked.current = true;
+    const bridge = window.deliveryflowDesktop;
+    void (async () => {
+      const remembered = await bridge.loadRememberedLogin();
+      if (!remembered) return;
+      setDesktopLoginSaving(true);
+      setRememberDesktopLogin(true);
+      try {
+        const user = await bridge.login(remembered);
+        const info = await bridge.networkInfo();
+        const savedDisplay = localStorage.getItem(`deliveryflow-order-display:${info.terminalId}:${user.id}`);
+        if (savedDisplay === "columns" || savedDisplay === "list") setOrderDisplay(savedDisplay);
+        setDesktopUser(user);
+        const localCash = await bridge.currentCash();
+        setCashRegister(localCash); setCashResolved(true);
+        setCashSessions(await bridge.listCashSessions());
+        if (localCash) setCashMovements(await bridge.listCashMovements(localCash.sessionId));
+      } catch {
+        await bridge.clearRememberedLogin();
+        setRememberDesktopLogin(false);
+        setDesktopLogin({ username: remembered.username, password: "" });
+        setDesktopLoginError("O acesso salvo não é mais válido. Digite a senha novamente.");
+      } finally { setDesktopLoginSaving(false); }
+    })();
+  }, [desktopMode, desktopUser, routeResolved]);
+
+  useEffect(() => {
     if (!desktopUser || !window.deliveryflowDesktop) return;
     let active = true;
     async function refreshNetwork() {
@@ -386,7 +420,7 @@ export default function Home() {
         if (snapshot.orders.length) { const next = stableOrders(snapshot.orders as unknown as Order[]); networkSignatures.current.orders = networkSignature(next); setOrders((current) => networkSignature(current) === networkSignatures.current.orders ? current : next); }
         if (snapshot.products.length) { const next = stableProducts(snapshot.products as unknown as Product[]); networkSignatures.current.products = networkSignature(next); setProducts((current) => networkSignature(current) === networkSignatures.current.products ? current : next); }
         if (snapshot.categories.length) { const next = stableCategories(snapshot.categories.map((item) => String(item.value || "")).filter(Boolean)); networkSignatures.current.categories = networkSignature(next); setCustomCategories((current) => networkSignature(current) === networkSignatures.current.categories ? current : next); }
-        if (snapshot.serviceUnits.length) { const next = stableServiceUnits(snapshot.serviceUnits as unknown as ServiceUnit[]); networkSignatures.current.serviceUnits = networkSignature(next); setServiceUnits((current) => networkSignature(current) === networkSignatures.current.serviceUnits ? current : next); }
+        if (snapshot.serviceUnits.length) { const next = stableServiceUnits(snapshot.serviceUnits as unknown as ServiceUnit[]); networkServiceUnitIds.current = new Set(next.map((unit) => unit.id)); networkSignatures.current.serviceUnits = networkSignature(next); setServiceUnits((current) => networkSignature(current) === networkSignatures.current.serviceUnits ? current : next); }
         if (snapshot.customers.length) { const next = stableCustomers(snapshot.customers as unknown as Customer[]); networkSignatures.current.customers = networkSignature(next); setCustomers((current) => networkSignature(current) === networkSignatures.current.customers ? current : next); }
         const storeSetting = snapshot.settings.find((item) => item.networkId === "store");
         if (storeSetting) setStore((current) => { const next = { ...current, ...(cleanNetworkValue(storeSetting) as Partial<StoreSettings>) }; networkSignatures.current.store = networkSignature(next); return networkSignature(current) === networkSignatures.current.store ? current : next; });
@@ -405,7 +439,7 @@ export default function Home() {
   }, [desktopUser, networkReady, orders]);
 
   useEffect(() => { if (!networkReady || desktopUser?.role !== "admin" || !window.deliveryflowDesktop) return; const signature = networkSignature(products); if (networkSignatures.current.products === signature) return; networkSignatures.current.products = signature; const timer = window.setTimeout(() => { for (const product of products) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "product", entityId: String(product.id), data: cleanNetworkValue(product) }); }, 500); return () => window.clearTimeout(timer); }, [desktopUser, networkReady, products]);
-  useEffect(() => { if (!networkReady || desktopUser?.role !== "admin" || !window.deliveryflowDesktop) return; const signature = networkSignature(serviceUnits); if (networkSignatures.current.serviceUnits === signature) return; networkSignatures.current.serviceUnits = signature; const timer = window.setTimeout(() => { for (const unit of serviceUnits) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "serviceUnit", entityId: unit.id, data: cleanNetworkValue(unit) }); }, 500); return () => window.clearTimeout(timer); }, [desktopUser, networkReady, serviceUnits]);
+  useEffect(() => { if (!networkReady || desktopUser?.role !== "admin" || !window.deliveryflowDesktop) return; const signature = networkSignature(serviceUnits); if (networkSignatures.current.serviceUnits === signature) return; networkSignatures.current.serviceUnits = signature; const currentIds = new Set(serviceUnits.map((unit) => unit.id)); const removedIds = [...networkServiceUnitIds.current].filter((id) => !currentIds.has(id)); networkServiceUnitIds.current = currentIds; const timer = window.setTimeout(() => { for (const removedId of removedIds) void window.deliveryflowDesktop?.deleteNetworkEntity({ entityType: "serviceUnit", entityId: removedId }); for (const unit of serviceUnits) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "serviceUnit", entityId: unit.id, data: cleanNetworkValue(unit) }); }, 500); return () => window.clearTimeout(timer); }, [desktopUser, networkReady, serviceUnits]);
   useEffect(() => { if (!networkReady || desktopUser?.role !== "admin" || !window.deliveryflowDesktop) return; const signature = networkSignature(customCategories); if (networkSignatures.current.categories === signature) return; networkSignatures.current.categories = signature; const timer = window.setTimeout(() => { for (const savedCategory of customCategories) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "category", entityId: savedCategory, data: { value: savedCategory } }); }, 500); return () => window.clearTimeout(timer); }, [customCategories, desktopUser, networkReady]);
   useEffect(() => { if (!networkReady || desktopUser?.role !== "admin" || !window.deliveryflowDesktop) return; const signature = networkSignature(customers); if (networkSignatures.current.customers === signature) return; networkSignatures.current.customers = signature; const timer = window.setTimeout(() => { for (const savedCustomer of customers) void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "customer", entityId: savedCustomer.id, data: cleanNetworkValue(savedCustomer) }); }, 500); return () => window.clearTimeout(timer); }, [customers, desktopUser, networkReady]);
   useEffect(() => { if (!networkReady || desktopUser?.role !== "admin" || !window.deliveryflowDesktop) return; const signature = networkSignature(store); if (networkSignatures.current.store === signature) return; networkSignatures.current.store = signature; const timer = window.setTimeout(() => { void window.deliveryflowDesktop?.saveNetworkEntity({ entityType: "setting", entityId: "store", data: cleanNetworkValue(store) }); }, 500); return () => window.clearTimeout(timer); }, [desktopUser, networkReady, store]);
@@ -1072,6 +1106,8 @@ export default function Home() {
     setDesktopLoginSaving(true); setDesktopLoginError("");
     try {
       const user = await window.deliveryflowDesktop.login(desktopLogin);
+      if (rememberDesktopLogin) await window.deliveryflowDesktop.saveRememberedLogin(desktopLogin);
+      else await window.deliveryflowDesktop.clearRememberedLogin();
       const info = await window.deliveryflowDesktop.networkInfo(); const savedDisplay = localStorage.getItem(`deliveryflow-order-display:${info.terminalId}:${user.id}`); if (savedDisplay === "columns" || savedDisplay === "list") setOrderDisplay(savedDisplay);
       setDesktopUser(user); setDesktopLogin({ username: "", password: "" });
       const localCash = await window.deliveryflowDesktop.currentCash();
@@ -1081,6 +1117,15 @@ export default function Home() {
     } catch (error) {
       setDesktopLoginError(error instanceof Error ? error.message : "Não foi possível entrar no PDV.");
     } finally { setDesktopLoginSaving(false); }
+  }
+
+  async function logoutDesktop() {
+    setUserMenuOpen(false);
+    try { await window.deliveryflowDesktop?.clearRememberedLogin(); } catch { /* logout must still continue */ }
+    setRememberDesktopLogin(false);
+    setDesktopUser(null);
+    setDesktopLogin({ username: "", password: "" });
+    desktopAutoLoginChecked.current = true;
   }
 
   function openTeamUser(user?: DesktopUser) {
@@ -1254,9 +1299,55 @@ export default function Home() {
   }
 
   function editServiceUnit(unit: ServiceUnit) {
-    const label = window.prompt("Nome ou identificação", unit.label)?.trim();
-    if (!label) return;
-    setServiceUnits((current) => current.map((item) => item.id === unit.id ? { ...item, label } : item));
+    setServiceUnitEditError("");
+    setEditingServiceUnit({ ...unit });
+  }
+
+  async function removeServiceUnit(unit: ServiceUnit, occupied: boolean) {
+    if (occupied) {
+      notify(`Encerre ${unit.type === "mesa" ? "a mesa" : "a comanda"} antes de excluir.`);
+      return;
+    }
+    if (!window.confirm(`Excluir definitivamente ${unit.label}?`)) return;
+    try {
+      if (!desktopMode || !window.deliveryflowDesktop) throw new Error("A exclusão deve ser feita no programa instalado conectado ao Servidor.");
+      await window.deliveryflowDesktop.deleteNetworkEntity({ entityType: "serviceUnit", entityId: unit.id });
+      networkServiceUnitIds.current.delete(unit.id);
+      setServiceUnits((current) => {
+        const next = stableServiceUnits(current.filter((item) => item.id !== unit.id));
+        networkSignatures.current.serviceUnits = networkSignature(next);
+        return next;
+      });
+      setSelectedUnit((current) => current?.id === unit.id ? null : current);
+      setEditingServiceUnit((current) => current?.id === unit.id ? null : current);
+      notify(`${unit.type === "mesa" ? "Mesa" : "Comanda"} excluída definitivamente`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Não foi possível excluir no Servidor.");
+    }
+  }
+
+  async function saveEditedServiceUnit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingServiceUnit) return;
+    const number = editingServiceUnit.number.trim().padStart(2, "0");
+    const label = editingServiceUnit.label.trim();
+    if (!number || !label) { setServiceUnitEditError("Preencha o número e o nome."); return; }
+    if (serviceUnits.some((unit) => unit.id !== editingServiceUnit.id && unit.type === editingServiceUnit.type && unit.number === number)) {
+      setServiceUnitEditError(`Já existe ${editingServiceUnit.type === "mesa" ? "uma mesa" : "uma comanda"} com o número ${number}.`);
+      return;
+    }
+    const updated = { ...editingServiceUnit, number, label };
+    try {
+      if (desktopMode && window.deliveryflowDesktop) await window.deliveryflowDesktop.saveNetworkEntity({ entityType: "serviceUnit", entityId: updated.id, data: cleanNetworkValue(updated) });
+      networkServiceUnitIds.current.add(updated.id);
+      setServiceUnits((current) => stableServiceUnits(current.map((unit) => unit.id === updated.id ? updated : unit)));
+      setSelectedUnit((current) => current?.id === updated.id ? updated : current);
+      setEditingServiceUnit(null);
+      setServiceUnitEditError("");
+      notify(`${updated.type === "mesa" ? "Mesa" : "Comanda"} atualizada`);
+    } catch (error) {
+      setServiceUnitEditError(error instanceof Error ? error.message : "Não foi possível salvar no servidor local.");
+    }
   }
 
   function openUnitForOrder(unit: ServiceUnit) {
@@ -1376,7 +1467,7 @@ export default function Home() {
   }
 
   if (desktopMode && !desktopUser) {
-    return <main className="admin-login desktop-login"><form className="login-card" onSubmit={enterDesktop}><img className="login-logo-image" src="/deliveryflow-icon.png" alt="DeliveryFlow" /><span>DELIVERYFLOW PARA WINDOWS</span><h1>Entrar no PDV</h1><p>Use seu usuário interno. Este acesso funciona mesmo quando a internet estiver indisponível.</p><label>Usuário<input value={desktopLogin.username} onChange={(event) => setDesktopLogin({ ...desktopLogin, username: event.target.value })} autoFocus /></label><label>Senha<input type="password" value={desktopLogin.password} onChange={(event) => setDesktopLogin({ ...desktopLogin, password: event.target.value })} /></label>{desktopLoginError && <p className="login-error">{desktopLoginError}</p>}<button className="primary wide" disabled={desktopLoginSaving}>{desktopLoginSaving ? "Entrando..." : "Entrar no sistema"}</button><small className="first-access">Primeiro acesso: usuário <b>admin</b> · senha <b>DeliveryFlow@123</b></small></form></main>;
+    return <main className="admin-login desktop-login"><form className="login-card" onSubmit={enterDesktop}><img className="login-logo-image" src="/deliveryflow-icon.png" alt="DeliveryFlow" /><span>DELIVERYFLOW PARA WINDOWS</span><h1>Entrar no PDV</h1><p>Use seu usuário interno. Este acesso funciona mesmo quando a internet estiver indisponível.</p><label>Usuário<input value={desktopLogin.username} onChange={(event) => setDesktopLogin({ ...desktopLogin, username: event.target.value })} autoFocus /></label><label>Senha<input type="password" value={desktopLogin.password} onChange={(event) => setDesktopLogin({ ...desktopLogin, password: event.target.value })} /></label><label className="remember-login"><input type="checkbox" checked={rememberDesktopLogin} onChange={(event) => setRememberDesktopLogin(event.target.checked)} /><span><b>Lembrar meu acesso neste computador</b><small>A senha será protegida pela criptografia do Windows.</small></span></label>{desktopLoginError && <p className="login-error">{desktopLoginError}</p>}<button className="primary wide" disabled={desktopLoginSaving}>{desktopLoginSaving ? "Entrando..." : "Entrar no sistema"}</button><small className="first-access">Primeiro acesso: usuário <b>admin</b> · senha <b>DeliveryFlow@123</b></small></form></main>;
   }
 
   if (!desktopMode && !adminUser) {
@@ -1404,7 +1495,7 @@ export default function Home() {
       <aside className="sidebar">
         <div className="brand sidebar-brand"><img src="/deliveryflow-horizontal.png" alt="DeliveryFlow" /></div>
         <nav>{nav.map((item) => { const active = item.id === "produtos" ? ["produtos", "categorias", "impressoras"].includes(view) : item.id === "loja" ? ["loja", "atendimento"].includes(view) : item.id === "mesas" ? ["mesas", "comandas"].includes(view) : view === item.id; return <button key={item.id} className={active ? "active" : ""} onClick={() => setView(item.id === "mesas" ? (store.serviceMode === "mesa" ? "mesas" : "comandas") : item.id)}><i>{item.icon}</i>{item.label}{item.id === "pedidos" && <b>{activeOrders.length}</b>}</button>; })}</nav>
-        <div className="sidebar-bottom"><button onClick={() => setView("cardapio")}><i>↗</i> Prévia do cardápio</button>{!desktopMode && <button onClick={installApp}><i>↓</i> Instalar no PC</button>}<button onClick={() => desktopMode ? setDesktopUser(null) : logoutAdmin()}><i>↪</i> Sair</button><div className="user"><span>{operatorName.slice(0, 2).toUpperCase()}</span><div><strong>{operatorName}</strong><small>{operatorRole}</small></div><i>•••</i></div></div>
+        <div className="sidebar-bottom"><button onClick={() => setView("cardapio")}><i>↗</i> Prévia do cardápio</button>{!desktopMode && <button onClick={installApp}><i>↓</i> Instalar no PC</button>}<div className="sidebar-version">DeliveryFlow · versão {APP_VERSION}</div><div className="user-menu-wrap">{userMenuOpen && <button className="user-menu-backdrop" aria-label="Fechar menu" onClick={() => setUserMenuOpen(false)} />}<button className="user user-menu-trigger" onClick={() => setUserMenuOpen((open) => !open)} aria-expanded={userMenuOpen}><span>{operatorName.slice(0, 2).toUpperCase()}</span><div><strong>{operatorName}</strong><small>{operatorRole}</small></div><i className="user-more">•••</i></button>{userMenuOpen && <div className="user-popover"><button onClick={() => { if (desktopMode) void logoutDesktop(); else { setUserMenuOpen(false); logoutAdmin(); } }}><i>↪</i> Sair do sistema</button></div>}</div></div>
       </aside>
 
       <section className="admin-main">
@@ -1448,9 +1539,10 @@ export default function Home() {
 
         {view === "clientes" && <section className="customers-page"><header className="team-toolbar"><div><small>CADASTRO CENTRAL</small><h2>Clientes</h2><p>Localize pelo telefone e consulte o histórico em todos os caixas.</p></div><button className="primary" onClick={() => setEditingCustomer({ id: `cli_${Date.now()}`, name: "", phone: "", street: "", number: "", neighborhood: "", complement: "", notes: "", active: true, createdAt: Date.now(), updatedAt: Date.now() })}>+ Novo cliente</button></header><div className="page-actions"><div className="search-box">⌕ <input value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Buscar por nome ou telefone" /></div></div><div className="customer-list">{customers.filter((item) => `${item.name} ${item.phone}`.toLowerCase().includes(customerSearch.toLowerCase())).map((item) => { const history = orders.filter((order) => order.customerId === item.id || order.phone?.replace(/\D/g, "") === item.phone.replace(/\D/g, "")); return <article key={item.id} className={item.active ? "" : "inactive"}><span className="team-avatar">{item.name.slice(0, 2).toUpperCase()}</span><div><strong>{item.name}</strong><small>{item.phone} · {item.neighborhood || "Sem endereço"}</small></div><div><b>{history.length} pedidos</b><small>Último: {history[0]?.orderDate || "—"}</small></div><strong>{money.format(history.reduce((sum, order) => sum + order.total, 0))}</strong><button className="secondary" onClick={() => setEditingCustomer(item)}>Editar</button><button className="secondary" onClick={() => setCustomers((current) => current.map((customerItem) => customerItem.id === item.id ? { ...customerItem, active: !customerItem.active, updatedAt: Date.now() } : customerItem))}>{item.active ? "Desativar" : "Ativar"}</button></article>; })}</div></section>}
 
-        {(view === "mesas" || view === "comandas") && <section className="service-unit-page">{(() => { const type = view === "mesas" ? "mesa" : "comanda"; const units = serviceUnits.filter((unit) => unit.type === type); return <><header className="service-unit-toolbar"><div><small>CONTROLE DO SALÃO</small><h2>{type === "mesa" ? "Mesas" : "Comandas"}</h2><p>Clique em uma unidade para ver o consumo, lançar pedidos ou encerrar.</p></div><div><input value={newUnitLabel} onChange={(event) => setNewUnitLabel(event.target.value)} placeholder={`Nome da nova ${type}`} /><button className="primary" onClick={() => addServiceUnit(type)}>+ Criar</button><button className="secondary" onClick={() => exportServiceUnitLinks(type)}>Baixar links no Excel</button></div></header><div className="service-unit-grid">{units.map((unit) => { const unitOrders = orders.filter((order) => order.serviceUnitId === unit.id && order.status !== "concluido"); const total = unitOrders.reduce((sum, order) => sum + order.total, 0); const occupied = Boolean(unit.openedAt || unitOrders.length); return <article className={`service-unit-card ${occupied ? "occupied" : "free"} ${unit.active ? "" : "inactive"}`} key={unit.id} onClick={() => setSelectedUnit(unit)}><header><span>{type === "mesa" ? "MESA" : "COMANDA"}</span><b>{!unit.active ? "Desativada" : occupied ? "Aberta" : "Livre"}</b></header><strong>{unit.number}</strong><h3>{unit.label}</h3><p>{unitOrders.length} pedido{unitOrders.length === 1 ? "" : "s"} · {money.format(total)}</p><footer><button className="secondary" onClick={(event) => { event.stopPropagation(); editServiceUnit(unit); }}>Editar</button><button className="secondary" onClick={(event) => { event.stopPropagation(); setServiceUnits((current) => current.map((item) => item.id === unit.id ? { ...item, active: !item.active } : item)); }}>{unit.active ? "Desativar" : "Ativar"}</button><button className="secondary" onClick={(event) => { event.stopPropagation(); openUnitForOrder(unit); }} disabled={!unit.active}>+ Pedido</button>{occupied && <button className="primary" onClick={(event) => { event.stopPropagation(); closeServiceUnit(unit); }}>Encerrar</button>}<button className="danger-action" onClick={(event) => { event.stopPropagation(); if (!occupied && window.confirm(`Excluir ${unit.label}?`)) setServiceUnits((current) => current.filter((item) => item.id !== unit.id)); }} disabled={occupied}>Excluir</button></footer></article>; })}</div></>; })()}</section>}
+        {(view === "mesas" || view === "comandas") && <section className="service-unit-page">{(() => { const type = view === "mesas" ? "mesa" : "comanda"; const units = serviceUnits.filter((unit) => unit.type === type); return <><header className="service-unit-toolbar"><div><small>CONTROLE DO SALÃO</small><h2>{type === "mesa" ? "Mesas" : "Comandas"}</h2><p>Clique em uma unidade para ver o consumo, lançar pedidos ou encerrar.</p></div><div><input value={newUnitLabel} onChange={(event) => setNewUnitLabel(event.target.value)} placeholder={`Nome da nova ${type}`} /><button className="primary" onClick={() => addServiceUnit(type)}>+ Criar</button><button className="secondary" onClick={() => exportServiceUnitLinks(type)}>Baixar links no Excel</button></div></header><div className="service-unit-grid">{units.map((unit) => { const unitOrders = orders.filter((order) => order.serviceUnitId === unit.id && order.status !== "concluido"); const total = unitOrders.reduce((sum, order) => sum + order.total, 0); const occupied = Boolean(unit.openedAt || unitOrders.length); return <article className={`service-unit-card ${occupied ? "occupied" : "free"} ${unit.active ? "" : "inactive"}`} key={unit.id} onClick={() => setSelectedUnit(unit)}><header><span>{type === "mesa" ? "MESA" : "COMANDA"}</span><b>{!unit.active ? "Desativada" : occupied ? "Aberta" : "Livre"}</b></header><strong>{unit.number}</strong><h3>{unit.label}</h3><p>{unitOrders.length} pedido{unitOrders.length === 1 ? "" : "s"} · {money.format(total)}</p><footer><button className="secondary" onClick={(event) => { event.stopPropagation(); editServiceUnit(unit); }}>Editar</button><button className="secondary" onClick={(event) => { event.stopPropagation(); setServiceUnits((current) => current.map((item) => item.id === unit.id ? { ...item, active: !item.active } : item)); }}>{unit.active ? "Desativar" : "Ativar"}</button><button className="secondary" onClick={(event) => { event.stopPropagation(); openUnitForOrder(unit); }} disabled={!unit.active}>+ Pedido</button>{occupied && <button className="primary" onClick={(event) => { event.stopPropagation(); closeServiceUnit(unit); }}>Encerrar</button>}<button className="danger-action" onClick={(event) => { event.stopPropagation(); void removeServiceUnit(unit, occupied); }}>Excluir</button></footer></article>; })}</div></>; })()}</section>}
 
         {selectedUnit && (view === "mesas" || view === "comandas") && <div className="modal-backdrop" onMouseDown={() => setSelectedUnit(null)}><section className="modal unit-detail-modal" onMouseDown={(event) => event.stopPropagation()}><div className="modal-head"><div><small>{selectedUnit.type === "mesa" ? "MESA" : "COMANDA"} {selectedUnit.number}</small><h2>{selectedUnit.label}</h2></div><button onClick={() => setSelectedUnit(null)}>×</button></div>{(() => { const unitOrders = orders.filter((order) => order.serviceUnitId === selectedUnit.id && order.status !== "concluido"); const total = unitOrders.reduce((sum, order) => sum + order.total, 0); return <><div className="unit-detail-summary"><span>{unitOrders.length} pedidos</span><strong>{money.format(total)}</strong></div><div className="unit-order-list">{unitOrders.length ? unitOrders.map((order) => <article key={order.id}><div><strong>#{order.id}</strong><span>{statusLabel[order.status]} · {order.time}</span></div><b>{money.format(order.total)}</b></article>) : <p>Nenhum pedido lançado.</p>}</div><div className="modal-actions"><button className="secondary" onClick={() => openUnitForOrder(selectedUnit)}>+ Adicionar pedido</button>{Boolean(selectedUnit.openedAt || unitOrders.length) && <button className="primary" onClick={() => closeServiceUnit(selectedUnit)}>Encerrar e receber</button>}</div></>; })()}</section></div>}
+        {editingServiceUnit && <div className="modal-backdrop" onMouseDown={() => setEditingServiceUnit(null)}><form className="modal service-unit-edit-modal" onSubmit={saveEditedServiceUnit} onMouseDown={(event) => event.stopPropagation()}><div className="modal-head"><div><small>EDITAR {editingServiceUnit.type === "mesa" ? "MESA" : "COMANDA"}</small><h2>Identificação da unidade</h2></div><button type="button" onClick={() => setEditingServiceUnit(null)}>×</button></div><div className="service-unit-edit-grid"><label>Número<input value={editingServiceUnit.number} onChange={(event) => { setServiceUnitEditError(""); setEditingServiceUnit({ ...editingServiceUnit, number: event.target.value }); }} autoFocus required /></label><label>Nome / identificação<input value={editingServiceUnit.label} onChange={(event) => { setServiceUnitEditError(""); setEditingServiceUnit({ ...editingServiceUnit, label: event.target.value }); }} required /></label></div>{serviceUnitEditError && <p className="form-error" role="alert">! {serviceUnitEditError}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={() => setEditingServiceUnit(null)}>Cancelar</button><button className="primary">Salvar alterações</button></div></form></div>}
 
         {view === "equipe" && <section className="team-page"><header className="team-toolbar"><div><small>USUÁRIOS DO PROGRAMA</small><h2>Equipe e acessos</h2><p>Cadastre operadores locais e defina o que cada função pode acessar.</p></div><button className="primary" onClick={() => openTeamUser()}>+ Novo usuário</button></header><div className="team-role-summary">{(["admin", "gerente", "caixa", "garcom", "cozinha", "entregador"] as DesktopRole[]).map((role) => <article key={role}><span>{teamUsers.filter((user) => user.role === role && user.active).length}</span><strong>{role}</strong></article>)}</div><div className="team-list">{teamUsers.map((user) => <article key={user.id} className={user.active ? "" : "inactive"}><span className="team-avatar">{user.name.slice(0, 2).toUpperCase()}</span><div><strong>{user.name}</strong><small>@{user.username} · {user.role}</small></div><b>{user.active ? "Ativo" : "Desativado"}</b><button className="secondary" onClick={() => openTeamUser(user)}>Editar</button><button className="danger-action" onClick={() => removeTeamUser(user)} disabled={user.id === desktopUser?.id}>Excluir</button></article>)}</div>{!desktopMode && <div className="desktop-only-note"><strong>Cadastro local disponível no programa Windows</strong><p>Instale o DeliveryFlow PDV para gerenciar usuários que trabalham no caixa e na produção.</p></div>}</section>}
 
