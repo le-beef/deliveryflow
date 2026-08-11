@@ -1359,7 +1359,7 @@ export default function Home() {
     );
   }
 
-  if (!routeResolved || (!desktopMode && !authResolved) || (adminUser && !cashResolved)) {
+  if (!routeResolved || (!desktopMode && (!authResolved || (adminUser && !cashResolved)))) {
     return <main className="admin-login"><div className="login-card"><img className="login-logo-image" src="/deliveryflow-icon.png" alt="DeliveryFlow" /><h1>DeliveryFlow</h1><p>Conectando ao sistema...</p></div></main>;
   }
 
