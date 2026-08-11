@@ -17,8 +17,8 @@ export const auth = getAuth(app);
 export const database = getDatabase(app);
 export const ADMIN_EMAIL = "albano.tiago.esteves@gmail.com";
 
-export function watchAuth(callback: (user: User | null) => void) {
-  return onAuthStateChanged(auth, callback);
+export function watchAuth(callback: (user: User | null) => void, onError?: (error: Error) => void) {
+  return onAuthStateChanged(auth, callback, (error) => onError?.(error));
 }
 
 export async function loginAdmin() {
