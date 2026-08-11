@@ -104,6 +104,22 @@ test("connects only the LAN server to the protected online-order inbox", async (
   assert.match(firebase, /watchAuth\([\s\S]*onError/);
 });
 
+test("keeps products, tables and tabs stable across network refreshes", async () => {
+  const [page, store] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/local-store.cjs", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(store, /ORDER BY updated_at DESC/);
+  assert.doesNotMatch(store, /networkUpdatedAt/);
+  assert.match(store, /ORDER BY entity_id COLLATE NOCASE/);
+  assert.match(page, /function stableServiceUnits/);
+  assert.match(page, /Number\(left\.number\)[\s\S]*Number\(right\.number\)/);
+  assert.match(page, /networkSignatures\.current\.products/);
+  assert.match(page, /networkSignature\(current\) === networkSignatures\.current\.serviceUnits/);
+  assert.match(page, /data: cleanNetworkValue\(product\)/);
+  assert.match(page, /data: cleanNetworkValue\(unit\)/);
+});
+
 test("keeps customers, exclusive service modes and GitHub updates", async () => {
   const [page, waiter, store, updater] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
