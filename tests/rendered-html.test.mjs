@@ -98,6 +98,7 @@ test("connects only the LAN server to the protected online-order inbox", async (
   assert.match(page, /Pedidos online conectados/);
   assert.match(firebase, /watchOrders<[\s\S]*onError/);
   assert.match(connectorCss, /display: block !important/);
+  assert.match(page, /!routeResolved \|\| \(!desktopMode && !authResolved\)/);
 });
 
 test("keeps customers, exclusive service modes and GitHub updates", async () => {
