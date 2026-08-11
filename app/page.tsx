@@ -341,7 +341,11 @@ export default function Home() {
       if (savedCategories) setCustomCategories(JSON.parse(savedCategories));
       setRouteResolved(true);
     }, 0);
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    const desktopRequested = new URLSearchParams(window.location.search).get("desktop") === "1";
+    if ("serviceWorker" in navigator) {
+      if (desktopRequested) navigator.serviceWorker.getRegistrations().then((registrations) => Promise.all(registrations.map((registration) => registration.unregister()))).catch(() => undefined);
+      else navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
     const beforeInstall = (event: Event) => { event.preventDefault(); setInstallEvent(event); };
     window.addEventListener("beforeinstallprompt", beforeInstall);
     return () => { window.clearTimeout(initialize); window.removeEventListener("beforeinstallprompt", beforeInstall); };
@@ -427,10 +431,22 @@ export default function Home() {
     return () => { active = false; window.clearInterval(timer); };
   }, []);
 
-  useEffect(() => watchAuth((user) => {
-    setAdminUser(user?.email === ADMIN_EMAIL ? user : null);
-    setAuthResolved(true);
-  }), []);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setAuthResolved(true);
+      setAuthError((current) => current || "O Firebase demorou para responder. O sistema foi liberado; tente conectar novamente.");
+    }, 4000);
+    const stop = watchAuth((user) => {
+      window.clearTimeout(timeout);
+      setAdminUser(user?.email === ADMIN_EMAIL ? user : null);
+      setAuthResolved(true);
+    }, (error) => {
+      window.clearTimeout(timeout);
+      setAuthError(error.message || "Não foi possível iniciar a conexão com o Firebase.");
+      setAuthResolved(true);
+    });
+    return () => { window.clearTimeout(timeout); stop(); };
+  }, []);
 
   useEffect(() => { if (desktopMode) return; return watchProducts<Product>((remoteProducts) => {
     if (remoteProducts?.length) {
